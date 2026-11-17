@@ -11,8 +11,9 @@ class Settings(BaseSettings):
     entorno: str = "local"
     database_url: SecretStr | None = None
     redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
-    meta_app_secret: SecretStr
-    meta_verify_token: SecretStr
+    # Vacíos por defecto (p. ej. al correr Alembic): el gateway rechaza todo hasta que se configuren.
+    meta_app_secret: SecretStr = SecretStr("")
+    meta_verify_token: SecretStr = SecretStr("")
     # Ventana para descartar reintentos de Meta del mismo message_id.
     dedupe_ttl_segundos: int = 172_800
     log_level: str = "INFO"

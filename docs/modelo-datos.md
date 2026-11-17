@@ -1,6 +1,7 @@
 # Modelo de datos — schema `platform` (propuesta para aprobar)
 
-Estado: **borrador, no ejecutado en Supabase**. Migración: `migrations/versions/0001_schema_platform.py`.
+Estado: **aprobado el 17-11-2026, aún no ejecutado en Supabase**. Migraciones: `0001_schema_platform.py`
+(estructura) y `0002_carga_tenants_lineas.py` (carga inicial). Roles: `scripts/supabase_roles.sql`.
 
 ## Principios
 
@@ -48,10 +49,16 @@ revisará cuando el control plane reemplace la administración del panel.
 | `platform_migrator` | Alembic | Dueño del schema `platform` |
 | `platform_app` | API y workers | DML en `platform` sujeto a RLS; `SELECT` en las tablas actuales que lee; `INSERT` en `public.conversation_history`. Sin `BYPASSRLS` |
 
-Los roles los crea un administrador en Supabase (requiere aprobación); la migración no crea roles.
+Los roles se crean una vez con `scripts/supabase_roles.sql` en el SQL Editor de Supabase; las migraciones no
+crean roles. Ese script solo agrega permisos y políticas para los roles nuevos: en las tablas actuales,
+`platform_app` ve únicamente las filas de la empresa fijada en `app.tenant_id`.
+
+## Decisiones
+
+- **Plan comercial (17-11-2026):** `tenants.plan` es la fuente única. La carga inicial toma el plan más frecuente
+  de cada empresa en `dashboard_usuarios.plan`. El panel seguirá leyendo `dashboard_usuarios` hasta que consuma la
+  API `/v1`; ese cambio del panel se hará con aprobación aparte.
 
 ## Pendiente de decidir
 
-- Plan comercial: hoy está en `dashboard_usuarios.plan` (por usuario). La propuesta es que `tenants.plan` sea la
-  fuente única y el panel lo lea desde ahí.
 - Si `messages` reemplaza a `conversation_history` al terminar la migración o ambas conviven.
