@@ -230,5 +230,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("drop function if exists platform.resolver_linea(text)")
-    for tabla in reversed(TABLAS_CON_TENANT + ["tool_definitions"]):
+    for tabla in reversed([*TABLAS_CON_TENANT, "tool_definitions"]):
         op.execute(f"drop table if exists platform.{tabla} cascade")

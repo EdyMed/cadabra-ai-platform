@@ -6,6 +6,7 @@ progresiva al agente construido en n8n, que **sigue en producción** hasta que c
 - Auditoría de partida (16-11-2026): https://claude.ai/artifact/R1sCmdmA8ReJCM1Fka667B
 - Decisiones de arquitectura: [`docs/adr/`](docs/adr/)
 - Despliegue en el VPS (EasyPanel): [`docs/despliegue.md`](docs/despliegue.md)
+- **Cómo viaja un mensaje por el código: [`docs/motor-agente.md`](docs/motor-agente.md)** ← empezar aquí
 
 ## Arquitectura esencial
 
@@ -24,9 +25,12 @@ src/cadabra/
   tenancy/       contexto de tenant y ejecución
   db/            sesiones con app.tenant_id para RLS
   api/           app FastAPI
-  messaging/     gateway de WhatsApp, duplicados, lectura de eventos
+  messaging/     entrada (gateway) y salida (API de WhatsApp) de mensajes
+  conversations/ entrada.py → buzon.py → turno.py: el recorrido de cada mensaje
+  agents/        contexto, perfil (ficha → textos), prompt y el grafo LangGraph
+  tools/         una herramienta por archivo, con argumentos tipados
   workers/       broker y tareas Taskiq
-  agents/ tools/ integrations/ billing/ administration/   (se llenan en las Etapas 2 a 4)
+  integrations/ billing/ administration/   (siguientes etapas)
 migrations/      Alembic (schema platform)
 docker/          Dockerfile único
 tests/

@@ -30,3 +30,12 @@ async def sesion_tenant(tenant_id: int) -> AsyncIterator[AsyncSession]:
     async with _sesiones() as sesion, sesion.begin():
         await sesion.execute(text("select set_config('app.tenant_id', :t, true)"), {"t": str(tenant_id)})
         yield sesion
+
+
+@asynccontextmanager
+async def sesion_sin_tenant() -> AsyncIterator[AsyncSession]:
+    """Solo para lo que no depende de un tenant: hoy, platform.resolver_linea (SECURITY DEFINER)."""
+    engine()
+    assert _sesiones is not None
+    async with _sesiones() as sesion, sesion.begin():
+        yield sesion

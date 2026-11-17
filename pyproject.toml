@@ -15,12 +15,13 @@ dependencies = [
   "taskiq>=0.11",
   "taskiq-redis>=1.0",
   "httpx>=0.28",
+  "langgraph>=0.2",
+  "langchain-openai>=0.2",
+  "tzdata>=2024.1",            # zonas horarias (America/Santiago) en Windows e imágenes slim
 ]
 
 [project.optional-dependencies]
-# Motor del agente (Etapa 4). Se instala aparte para que la base arranque liviana.
-agente = ["langgraph>=0.2", "langchain-openai>=0.2"]
-dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.8"]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.8", "fakeredis>=2.26"]
 
 [build-system]
 requires = ["setuptools>=75"]
@@ -38,3 +39,8 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+
+[tool.ruff.lint]
+# Reglas fijas del proyecto (los valores por defecto de ruff cambian entre versiones).
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "SIM", "BLE", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]   # textos en español con tildes, comillas y emojis
