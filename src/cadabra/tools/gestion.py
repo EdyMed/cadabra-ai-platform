@@ -1,4 +1,7 @@
-"""Herramientas de gestión del negocio. SOLO se entregan al modelo cuando el contacto es owner."""
+"""Herramientas de gestión del negocio. SOLO se entregan al modelo cuando el contacto es owner.
+
+Leen las vistas erp_lectura.* (ya filtradas por la empresa del turno; ver scripts/supabase_vistas_erp.sql).
+"""
 from datetime import date
 from typing import Literal
 
@@ -26,7 +29,7 @@ class NombreCliente(BaseModel):
 
 SQL_VENTAS = text("""
     select coalesce(round(sum(total_incluido)), 0) as ventas_clp, count(distinct numero_documento) as documentos
-    from public.movimientos_ventas
+    from erp_lectura.movimientos_ventas
     where empresa = cast(:empresa as int) and fecha_documento >= cast(:desde as date) and fecha_documento < cast(:hasta as date)
 """)
 
@@ -52,8 +55,8 @@ VENTAS_PERIODO = Herramienta(
 
 SQL_TOP = text("""
     select p.nombre, round(sum(mv.total_incluido)) as monto_clp, round(sum(mv.cantidad)) as unidades
-    from public.movimientos_ventas mv
-    left join public.productos p on p.codigo = mv.codigo_producto and p.empresa = mv.empresa
+    from erp_lectura.movimientos_ventas mv
+    left join erp_lectura.productos p on p.codigo = mv.codigo_producto and p.empresa = mv.empresa
     where mv.empresa = cast(:empresa as int) and mv.fecha_documento >= cast(:desde as date) and mv.fecha_documento < cast(:hasta as date)
     group by p.nombre
     order by (case when cast(:orden as text) = 'unidades' then sum(mv.cantidad) else sum(mv.total_incluido) end) desc nulls last
@@ -82,19 +85,17 @@ TOP_PRODUCTOS = Herramienta(
 # ---- saldo_cliente --------------------------------------------------------------------------------------------
 
 SQL_SALDO = text("""
-    select coalesce(c.nombre_empresa, trim(c.paterno_cl||' '||coalesce(c.materno_cl,'')||' '||c.nombre_cl)) as cliente,
-           round(s.saldo_deuda) as deuda_clp
-    from public.saldos_clientes s
-    join public.clientes c on c.rut_cl = s.cliente
-    where s.empresa = cast(:empresa as int)
-      and s.saldo_deuda > 0
+    select coalesce(d.nombre_empresa, trim(d.paterno_cl||' '||coalesce(d.materno_cl,'')||' '||d.nombre_cl)) as cliente,
+           round(d.saldo_deuda) as deuda_clp
+    from erp_lectura.deudas_clientes d
+    where d.empresa = cast(:empresa as int)
       and (
-        lower(coalesce(c.nombre_empresa,'')) like '%'||lower(cast(:nombre as text))||'%'
-        or lower(coalesce(c.paterno_cl,'')) like '%'||lower(cast(:nombre as text))||'%'
-        or lower(coalesce(c.materno_cl,'')) like '%'||lower(cast(:nombre as text))||'%'
-        or lower(coalesce(c.nombre_cl,'')) like '%'||lower(cast(:nombre as text))||'%'
+        lower(coalesce(d.nombre_empresa,'')) like '%'||lower(cast(:nombre as text))||'%'
+        or lower(coalesce(d.paterno_cl,'')) like '%'||lower(cast(:nombre as text))||'%'
+        or lower(coalesce(d.materno_cl,'')) like '%'||lower(cast(:nombre as text))||'%'
+        or lower(coalesce(d.nombre_cl,'')) like '%'||lower(cast(:nombre as text))||'%'
       )
-    order by s.saldo_deuda desc
+    order by d.saldo_deuda desc
     limit 8
 """)
 

@@ -1,4 +1,7 @@
-"""stock_producto: busca productos y precios en el ERP o en el catálogo de Google Sheets. Disponible para todos."""
+"""stock_producto: busca productos y precios en el ERP o en el catálogo de Google Sheets. Disponible para todos.
+
+Lee las vistas erp_lectura.* (ya filtradas por la empresa del turno; ver scripts/supabase_vistas_erp.sql).
+"""
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -10,8 +13,8 @@ with q as (
   select array_remove(string_to_array(lower(trim(cast(:busqueda as text))), ' '), '') as palabras
 )
 select distinct p.nombre, p.precio_venta, null::text as unidad
-from public.productos p
-left join public.familias f on f.codigo = p.cod_familia and f.empresa = p.empresa,
+from erp_lectura.productos p
+left join erp_lectura.familias f on f.codigo = p.cod_familia and f.empresa = p.empresa,
   q
 where cast(:fuente as text) = 'erp_supabase'
   and p.empresa = cast(:empresa as int)
@@ -31,7 +34,7 @@ where cast(:fuente as text) = 'erp_supabase'
   )
 union all
 select c.nombre || case when c.disponible then '' else ' (agotado)' end, c.precio, c.unidad
-from public.catalogo_productos c, q
+from erp_lectura.catalogo_productos c, q
 where cast(:fuente as text) <> 'erp_supabase'
   and c.empresa = cast(:empresa as int)
   and (
