@@ -1,6 +1,6 @@
 # Modelo de datos — schema `platform` (propuesta para aprobar)
 
-Estado: **aprobado el 17-11-2026, aún no ejecutado en Supabase**. Migraciones: `0001_schema_platform.py`
+Estado: **aprobado y aplicado en Supabase el 17-11-2026** (versión 0002: tenants 1 y 3, líneas con motor `n8n`). Migraciones: `0001_schema_platform.py`
 (estructura) y `0002_carga_tenants_lineas.py` (carga inicial). Roles: `scripts/supabase_roles.sql`.
 
 ## Principios
