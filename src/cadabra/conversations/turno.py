@@ -4,8 +4,10 @@
   2. toma el candado de la conversación (un turno a la vez, en orden)
   3. vacía el buzón: todos los mensajes seguidos forman un solo texto
   4. carga el contexto y ejecuta el agente
-  5. guarda el turno en el historial y registra la ejecución (en ensayo: solo el registro)
-  6. envía la respuesta por WhatsApp (en ensayo: solo queda en el log)
+  5. guarda el turno en el historial, lo que detecta post_turno (lead, puntaje) y registra la ejecución
+  6. ya confirmado lo anterior: responde por WhatsApp, cuenta la conversación y hace lo que post_turno pidió
+     hacia afuera (alerta al vendedor, evento en Calendar, aviso de horario)
+En modo ensayo se calcula todo, pero solo se escribe el registro de la ejecución.
 """
 import asyncio
 import json
@@ -17,9 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cadabra.agents.agente import ResultadoAgente, responder
 from cadabra.agents.contexto import cargar_contexto
+from cadabra.conversations import post_turno
 from cadabra.conversations.buzon import Buzon
 from cadabra.core.config import Settings
 from cadabra.db.session import sesion_tenant
+from cadabra.integrations.n8n import ClienteN8n
 from cadabra.messaging.whatsapp_api import ClienteWhatsApp
 from cadabra.tenancy.context import fijar_tenant
 from cadabra.tools.base import EntornoHerramienta
@@ -34,7 +38,7 @@ ESPERA_CANDADO_SEGUNDOS = 60
 
 
 async def procesar_turno(tenant_id: int, conversacion: str, message_id: str,
-                         buzon: Buzon, settings: Settings, whatsapp: ClienteWhatsApp) -> None:
+                         buzon: Buzon, settings: Settings, whatsapp: ClienteWhatsApp, n8n: ClienteN8n) -> None:
     fijar_tenant(tenant_id)
     await asyncio.sleep(settings.debounce_segundos)
     if not await buzon.es_el_ultimo(conversacion, message_id):
@@ -47,7 +51,7 @@ async def procesar_turno(tenant_id: int, conversacion: str, message_id: str,
     try:
         mensajes = await buzon.vaciar(conversacion)
         if mensajes:
-            await _atender(tenant_id, conversacion, message_id, "\n".join(mensajes).strip(), settings, whatsapp)
+            await _atender(tenant_id, conversacion, message_id, "\n".join(mensajes).strip(), settings, whatsapp, n8n)
     finally:
         await buzon.soltar_candado(conversacion, token)
 
@@ -62,7 +66,7 @@ async def _esperar_candado(buzon: Buzon, conversacion: str) -> str | None:
 
 
 async def _atender(tenant_id: int, conversacion: str, message_id: str, texto: str,
-                   settings: Settings, whatsapp: ClienteWhatsApp) -> None:
+                   settings: Settings, whatsapp: ClienteWhatsApp, n8n: ClienteN8n) -> None:
     _, phone_number_id, telefono = conversacion.split(":", 2)
     inicio = time.monotonic()
 
@@ -70,20 +74,27 @@ async def _atender(tenant_id: int, conversacion: str, message_id: str, texto: st
         ctx = await cargar_contexto(sesion, phone_number_id, telefono, texto)
         if ctx is None:
             return
+        resultado: ResultadoAgente | None = None
+        post: post_turno.PostTurno | None = None
         if not ctx.configurado:
             respuesta = AVISO_SIN_CONFIGURAR
-            resultado = None
         else:
             entorno = EntornoHerramienta(ctx=ctx, sesion=sesion, whatsapp=whatsapp, ensayo=settings.modo_ensayo)
             resultado = await responder(ctx, entorno, settings)
             respuesta = resultado.respuesta
-            if not settings.modo_ensayo and not resultado.error:
-                await _guardar_turno(sesion, ctx.empresa, telefono, texto, message_id, respuesta)
-            await _registrar(sesion, tenant_id, resultado, texto, int((time.monotonic() - inicio) * 1000))
+            if not resultado.error:
+                if not settings.modo_ensayo:
+                    await _guardar_turno(sesion, ctx.empresa, telefono, texto, message_id, respuesta)
+                post = await post_turno.en_la_base(sesion, ctx, respuesta, settings)
+            await _registrar(sesion, tenant_id, resultado, post, texto, int((time.monotonic() - inicio) * 1000))
 
-    # Fuera de la transacción: lo escrito en la base ya quedó confirmado aunque el envío falle.
+    # Fuera de la transacción: lo escrito en la base ya quedó confirmado aunque un envío falle.
     if respuesta:
         await whatsapp.enviar_texto(phone_number_id, telefono, respuesta)
+        if resultado is not None:
+            await n8n.contar_conversacion(ctx.empresa, telefono)
+    if post is not None:
+        await post_turno.hacia_afuera(post, ctx, n8n, whatsapp)
     log.info("turno atendido", extra={"datos": {
         "conversacion": conversacion, "ensayo": settings.modo_ensayo, "respuesta": respuesta,
         "herramientas": [ll["herramienta"] for ll in (resultado.llamadas if resultado else [])],
@@ -115,13 +126,16 @@ SQL_EVENTO = text("""
 """)
 
 
-async def _registrar(sesion: AsyncSession, tenant_id: int, r: ResultadoAgente, entrada: str, latencia_ms: int) -> None:
+async def _registrar(sesion: AsyncSession, tenant_id: int, r: ResultadoAgente, post: post_turno.PostTurno | None,
+                     entrada: str, latencia_ms: int) -> None:
     ejecucion = (await sesion.execute(SQL_EJECUCION, {
         "tenant": tenant_id, "estado": "error" if r.error else "ok", "modelo": r.modelo,
         "te": r.tokens_entrada, "ts": r.tokens_salida, "lat": latencia_ms, "error": r.error,
     })).scalar_one()
     eventos = [("herramienta", ll["herramienta"], ll["argumentos"], ll["resultado"]) for ll in r.llamadas]
     eventos.append(("llm", "respuesta", {"mensaje": entrada}, {"respuesta": r.respuesta}))
+    if post is not None:
+        eventos.append(("herramienta", "post_turno", {}, post.resumen()))
     for tipo, nombre, e, s in eventos:
         await sesion.execute(SQL_EVENTO, {
             "tenant": tenant_id, "ejecucion": ejecucion, "tipo": tipo, "nombre": nombre,

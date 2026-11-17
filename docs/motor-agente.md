@@ -9,11 +9,13 @@ del paso dice dónde mirar.
                        ▼  cola Redis "plat:cola:eventos"
                workers/tareas.py
                  procesar_evento_whatsapp ──► conversations/entrada.py
-                                               1. lee los mensajes del evento         (meta_eventos.py)
+                                               0. coexistencia → se reenvía a n8n
+                                               1. lee los mensajes del evento
                                                2. ¿qué empresa y motor? resolver_linea (db)
                                                3. ¿bot encendido en esta conversación? (bot_activo / pausa)
-                                               4. deja el texto en el buzón           (conversations/buzon.py)
-                                               5. agenda procesar_turno
+                                               4. ¿pasó el tope diario?               (conversations/tope.py)
+                                               5. deja el texto en el buzón           (conversations/buzon.py)
+                                               6. agenda procesar_turno
                        │
                        ▼  (espera 8 s: agrupa mensajes seguidos)
                  procesar_turno ─────────► conversations/turno.py
@@ -22,8 +24,12 @@ del paso dice dónde mirar.
                                                3. vacía el buzón → texto del turno
                                                4. contexto: empresa, rol, ficha CRM, historial (agents/contexto.py)
                                                5. agente: prompt + herramientas       (agents/agente.py)
-                                               6. guarda el turno y responde por WhatsApp (messaging/whatsapp_api.py)
-                                               7. registra la ejecución (tokens, costo, latencia)
+                                               6. post_turno en la base: interés → lead, puntaje con IA
+                                                                                      (conversations/post_turno.py)
+                                               7. guarda el turno y registra la ejecución
+                                               8. responde por WhatsApp, cuenta la conversación (n8n) y
+                                                  post_turno hacia afuera: alerta al vendedor, evento en
+                                                  Calendar, aviso de horario          (integrations/n8n.py)
 ```
 
 ## Dónde está cada cosa
@@ -37,6 +43,9 @@ del paso dice dónde mirar.
 | `agents/prompt.py` | El prompt de sistema, igual al de n8n | Prompt del "AI Agent" |
 | `agents/agente.py` | El grafo LangGraph: modelo + herramientas | "AI Agent" + "OpenAI" |
 | `tools/` | Una herramienta por archivo, con argumentos tipados | Nodos de herramientas |
+| `conversations/deteccion.py` | Reglas de interés, pedido de humano, nombre y agenda | "Detectar interés / agenda (auto)" |
+| `conversations/puntaje.py` | Clasificador de IA + pesos del puntaje del lead | "Score: …" |
+| `integrations/n8n.py` | Webhooks de n8n: alerta al vendedor, contador, Calendar, coexistencia | Workflows auxiliares |
 
 ## Reglas del motor
 
@@ -51,7 +60,13 @@ del paso dice dónde mirar.
 - La ficha del agente se lee en vivo desde `public.agente_empresas_config` mientras convivan n8n y la plataforma,
   para que un cambio hecho en el panel aplique a ambos.
 
-## Pendiente (siguientes entregas)
+## Paridad con n8n
 
-Multimedia (audio, imagen, PDF), tope diario, detección automática de interés, alerta al vendedor, agenda en
-Google Calendar, puntaje del lead y eventos de coexistencia. Mientras tanto siguen en n8n.
+`tests/test_paridad_n8n.py` ejecuta con Node el JavaScript ORIGINAL de n8n ("Consolidar contexto",
+"Detectar interés", "Detectar agenda", guardados en `scripts/n8n/`) y exige resultados idénticos en Python.
+`scripts/comparar_con_n8n.py` compara respuestas reales de ambos motores; `scripts/verificar_sql.py` prepara
+todas las consultas contra la base antes de desplegar.
+
+## Pendiente
+
+Multimedia (audio, imagen, PDF): mientras tanto esos mensajes los atiende n8n.

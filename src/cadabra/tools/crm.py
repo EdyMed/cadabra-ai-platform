@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cadabra.tools.base import EntornoHerramienta, Herramienta
 
@@ -40,31 +41,40 @@ class CambioEstado(BaseModel):
 
 SQL_BUSCAR = text("select id from crm.crm_leads where empresa = :empresa and contact_id = :contacto limit 1")
 
+# Únicas columnas que la plataforma puede escribir en un lead (los nombres van al SQL: lista fija).
+COLUMNAS = ("nombre", "nombre_negocio", "producto_interes", "estado_crm", "comuna", "origen_lead",
+            "vendedor_asignado", "condicion_pago", "estado_agendamiento", "bot_activo")
 
-async def upsert_lead(entorno: EntornoHerramienta, campos: dict[str, Any]) -> dict[str, Any]:
-    """Actualiza el lead del contacto del turno o lo crea si no existe. Solo escribe los campos con valor."""
-    ctx = entorno.ctx
-    contacto = int(re.sub(r"\D", "", ctx.telefono))
-    campos = {k: v for k, v in campos.items() if v is not None and v != ""}
-    existente = (await entorno.sesion.execute(SQL_BUSCAR, {"empresa": ctx.empresa, "contacto": contacto})).scalar()
+
+async def guardar_en_crm(sesion: AsyncSession, empresa: int, telefono: str, campos: dict[str, Any]) -> dict[str, Any]:
+    """Actualiza el lead del contacto o lo crea si no existe. Solo escribe columnas permitidas y con valor.
+
+    Lo usan las herramientas del agente y la detección automática de interés (conversations/post_turno.py).
+    """
+    contacto = int(re.sub(r"\D", "", telefono))
+    campos = {k: v for k, v in campos.items() if k in COLUMNAS and v is not None and v != ""}
+    existente = (await sesion.execute(SQL_BUSCAR, {"empresa": empresa, "contacto": contacto})).scalar()
 
     if existente is not None:
         if campos:
-            asignaciones = ", ".join(f"{k} = :{k}" for k in campos)  # nombres de columna fijos (modelos Pydantic)
-            await entorno.sesion.execute(
+            asignaciones = ", ".join(f"{k} = :{k}" for k in campos)
+            await sesion.execute(
                 text(f"update crm.crm_leads set {asignaciones} where id = :id and empresa = :empresa"),
-                {**campos, "id": existente, "empresa": ctx.empresa},
+                {**campos, "id": existente, "empresa": empresa},
             )
         return {"record_id": existente, "accion": "actualizado"}
 
     nuevo = {"estado_crm": "Nuevo Lead", "origen_lead": "whatsapp", **campos,
-             "empresa": ctx.empresa, "contact_id": contacto, "phone": ctx.telefono}
+             "empresa": empresa, "contact_id": contacto, "phone": contacto}   # phone es bigint en crm_leads
     columnas = ", ".join(nuevo)
     valores = ", ".join(f":{k}" for k in nuevo)
-    creado = await entorno.sesion.execute(
-        text(f"insert into crm.crm_leads ({columnas}) values ({valores}) returning id"), nuevo
-    )
+    creado = await sesion.execute(text(f"insert into crm.crm_leads ({columnas}) values ({valores}) returning id"), nuevo)
     return {"record_id": creado.scalar_one(), "accion": "creado"}
+
+
+async def upsert_lead(entorno: EntornoHerramienta, campos: dict[str, Any]) -> dict[str, Any]:
+    """El lead de ESTA conversación y ESTA empresa: el modelo no puede elegir otro."""
+    return await guardar_en_crm(entorno.sesion, entorno.ctx.empresa, entorno.ctx.telefono, campos)
 
 
 async def guardar_lead(entorno: EntornoHerramienta, args: DatosLead) -> dict[str, Any]:

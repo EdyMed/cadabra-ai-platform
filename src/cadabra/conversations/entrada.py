@@ -1,9 +1,11 @@
 """Paso 1 del worker: de un evento de Meta a mensajes depositados en el buzón de su conversación.
 
+Eventos de coexistencia (ecos del dueño, historial, contactos de la app WhatsApp Business) se reenvían a n8n.
 Por cada mensaje entrante decide si la plataforma lo atiende:
   - ¿el número pertenece a una empresa? (platform.resolver_linea)
   - ¿la línea está en el motor nuevo? (o estamos en modo ensayo)
   - ¿el bot está encendido para este contacto? (bot_activo del CRM y pausa de coexistencia)
+  - ¿el contacto no pasó el tope diario de mensajes? (conversations/tope.py)
 Si todo da sí, lo deja en el buzón y agenda el turno.
 """
 import logging
@@ -11,15 +13,29 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from redis.asyncio import Redis
 from sqlalchemy import text
 
+from cadabra.conversations import tope
 from cadabra.conversations.buzon import Buzon, clave_conversacion
 from cadabra.core.config import Settings
 from cadabra.db.session import sesion_sin_tenant, sesion_tenant
+from cadabra.integrations.n8n import ClienteN8n
+from cadabra.messaging.whatsapp_api import ClienteWhatsApp
 
 log = logging.getLogger(__name__)
 
-AgendarTurno = Callable[[int, str, str], Awaitable[None]]   # (tenant_id, conversación, message_id)
+CAMPOS_COEXISTENCIA = {"smb_message_echoes", "history", "smb_app_state_sync", "account_update"}
+
+
+@dataclass
+class Dependencias:
+    buzon: Buzon
+    redis: Redis
+    settings: Settings
+    whatsapp: ClienteWhatsApp
+    n8n: ClienteN8n
+    agendar_turno: Callable[[int, str, str], Awaitable[None]]   # (tenant_id, conversación, message_id)
 
 
 @dataclass(frozen=True)
@@ -50,22 +66,38 @@ def leer_mensajes(evento: dict[str, Any]) -> list[MensajeEntrante]:
     return mensajes
 
 
+def es_de_coexistencia(evento: dict[str, Any]) -> bool:
+    return any(c.get("field") in CAMPOS_COEXISTENCIA
+               for e in evento.get("entry") or [] for c in e.get("changes") or [])
+
+
 SQL_LINEA = text("select tenant_id, motor from platform.resolver_linea(cast(:pnid as text))")
 
-SQL_BOT_ACTIVO = text("""
-    select case
-             when exists (select 1 from public.bot_pausas p
-                          where p.empresa = cast(:empresa as int) and p.contact_id = cast(:tel as text)
-                            and p.hasta > now()) then false
-             else coalesce((select l.bot_activo from crm.crm_leads l
-                            where l.empresa = cast(:empresa as int)
-                              and l.contact_id = nullif(regexp_replace(cast(:tel as text), '[^0-9]', '', 'g'), '')::bigint
-                            limit 1), true)
-           end
+# Guarda (bot encendido), rol del contacto y tope diario de la ficha, en una sola ida a la base.
+SQL_CONTROL = text("""
+    select
+      case when exists (select 1 from public.bot_pausas p
+                        where p.empresa = cast(:empresa as int) and p.contact_id = cast(:tel as text)
+                          and p.hasta > now()) then false
+           else coalesce((select l.bot_activo from crm.crm_leads l
+                          where l.empresa = cast(:empresa as int)
+                            and l.contact_id = nullif(regexp_replace(cast(:tel as text), '[^0-9]', '', 'g'), '')::bigint
+                          limit 1), true)
+      end as bot_activo,
+      coalesce((select c.rol from public.agente_contactos c
+                where c.empresa = cast(:empresa as int) and c.phone_number = cast(:tel as text) and c.activo = true
+                limit 1), 'anon') as rol,
+      (select case when c.config->'limites'->>'mensajes_dia_contacto' ~ '^[0-9]+$'
+                   then (c.config->'limites'->>'mensajes_dia_contacto')::int end
+       from public.agente_empresas_config c where c.empresa = cast(:empresa as int)) as limite
 """)
 
 
-async def procesar_evento(evento: dict[str, Any], buzon: Buzon, settings: Settings, agendar: AgendarTurno) -> None:
+async def procesar_evento(evento: dict[str, Any], dep: Dependencias) -> None:
+    if es_de_coexistencia(evento):
+        await dep.n8n.reenviar_coexistencia(evento)   # en ensayo, ClienteN8n solo lo registra
+        return
+
     for m in leer_mensajes(evento):
         if m.tipo not in ("text", "interactive"):
             log.info("tipo de mensaje aún no soportado por la plataforma", extra={"datos": {"tipo": m.tipo}})
@@ -76,15 +108,23 @@ async def procesar_evento(evento: dict[str, Any], buzon: Buzon, settings: Settin
         if linea is None:
             log.info("número sin empresa en la plataforma", extra={"datos": {"pnid": m.phone_number_id}})
             continue
-        if linea.motor != "codigo" and not settings.modo_ensayo:
+        if linea.motor != "codigo" and not dep.settings.modo_ensayo:
             continue  # esta línea la atiende n8n
 
         async with sesion_tenant(linea.tenant_id) as sesion:
-            activo = (await sesion.execute(SQL_BOT_ACTIVO, {"empresa": linea.tenant_id, "tel": m.telefono})).scalar()
-        if activo is False:
+            control = (await sesion.execute(SQL_CONTROL, {"empresa": linea.tenant_id, "tel": m.telefono})).one()
+        if control.bot_activo is False:
             log.info("bot apagado para este contacto", extra={"datos": {"telefono": m.telefono}})
             continue
 
+        t = await tope.contar(dep.redis, linea.tenant_id, m.telefono, control.rol, control.limite,
+                              dep.settings.zona_horaria)
+        if t.excedido:
+            if t.avisar:
+                await dep.whatsapp.enviar_texto(m.phone_number_id, m.telefono, tope.AVISO)
+            log.info("tope diario excedido", extra={"datos": {"telefono": m.telefono, "n": t.n, "limite": t.limite}})
+            continue
+
         conversacion = clave_conversacion(linea.tenant_id, m.phone_number_id, m.telefono)
-        await buzon.depositar(conversacion, m.message_id, m.texto)
-        await agendar(linea.tenant_id, conversacion, m.message_id)
+        await dep.buzon.depositar(conversacion, m.message_id, m.texto)
+        await dep.agendar_turno(linea.tenant_id, conversacion, m.message_id)

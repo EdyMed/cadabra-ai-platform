@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     temperatura: float = 0.3
     max_iteraciones: int = 6                       # pasos del agente por turno (n8n: maxIterations = 6)
     zona_horaria: str = "America/Santiago"
+    modelo_puntaje: str = "gpt-4o-mini"            # clasificador del puntaje del lead (igual que n8n)
+
+    # n8n: integraciones que siguen allá (Calendar, alerta al vendedor, contador, coexistencia)
+    n8n_url: str = "https://appcadabra-cadabra-project.jmyxxj.easypanel.host"
+    n8n_clave: SecretStr = SecretStr("")           # encabezado X-Cadabra-Clave de los webhooks internos
 
 
 @lru_cache
