@@ -1,11 +1,27 @@
--- Cadabra AI Platform — usuarios de base de datos (ejecutar UNA vez en Supabase → SQL Editor).
--- Antes de ejecutar: reemplazar las dos contraseñas por valores largos y aleatorios (sin "#").
+-- Cadabra AI Platform — usuarios de base de datos (Supabase → SQL Editor).
+-- Antes de ejecutar: reemplazar las dos contraseñas por valores largos, aleatorios y DISTINTOS (sin "#").
+-- Se puede ejecutar más de una vez: si los roles ya existen, solo les cambia la contraseña.
 -- Impacto en lo existente: ninguno. Solo AGREGA permisos y políticas para los roles nuevos;
 -- n8n, el panel y sus roles siguen igual.
 
 -- 1) Roles
-create role platform_migrator login password 'CAMBIAR_MIGRATOR';
-create role platform_app login password 'CAMBIAR_APP' nobypassrls;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'platform_migrator') then
+    alter role platform_migrator login password 'CAMBIAR_MIGRATOR';
+  else
+    create role platform_migrator login password 'CAMBIAR_MIGRATOR';
+  end if;
+  if exists (select 1 from pg_roles where rolname = 'platform_app') then
+    alter role platform_app login nobypassrls password 'CAMBIAR_APP';
+  else
+    create role platform_app login nobypassrls password 'CAMBIAR_APP';
+  end if;
+end $$;
+
+-- Postgres 16: para crear el schema a nombre del migrador y fijar sus privilegios por defecto,
+-- el usuario que ejecuta (postgres) debe ser miembro de ese rol.
+grant platform_migrator to postgres;
 
 -- 2) Schema propio de la plataforma (dueño: el migrador)
 create schema if not exists platform authorization platform_migrator;
@@ -29,6 +45,8 @@ grant select on crm.crm_leads, crm.vendedores to platform_app;
 
 -- 4) Políticas RLS para los roles nuevos en las tablas actuales.
 --    Carga inicial: el migrador lee todas las filas de estas dos tablas.
+drop policy if exists platform_migrator_carga on public.agente_lineas_whatsapp;
+drop policy if exists platform_migrator_carga on public.dashboard_usuarios;
 create policy platform_migrator_carga on public.agente_lineas_whatsapp for select to platform_migrator using (true);
 create policy platform_migrator_carga on public.dashboard_usuarios     for select to platform_migrator using (true);
 --    La app solo ve las filas de la empresa fijada en app.tenant_id.
@@ -40,6 +58,7 @@ begin
     'public.agente_contactos', 'public.bot_pausas', 'public.whatsapp_contactos', 'public.conversation_history',
     'crm.crm_leads', 'crm.vendedores']
   loop
+    execute format('drop policy if exists platform_app_tenant on %s', t);
     execute format(
       'create policy platform_app_tenant on %s to platform_app '
       'using (empresa = nullif(current_setting(''app.tenant_id'', true), '''')::int) '
