@@ -1,4 +1,4 @@
-# Dirección propia (webhook) de UNA línea de WhatsApp en Meta: manda sus mensajes a la plataforma o los devuelve a n8n.
+﻿# Dirección propia (webhook) de UNA línea de WhatsApp en Meta: manda sus mensajes a la plataforma o los devuelve a n8n.
 # Meta prioriza: dirección del número > dirección de la cuenta (WABA) > dirección de la app (n8n).
 #
 #   ver       muestra qué dirección tiene la línea
