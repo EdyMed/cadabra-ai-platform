@@ -5,7 +5,8 @@
   document  → texto del PDF                        "Extraer texto PDF" + "Normalizar documento"
   otro tipo → aviso fijo al cliente                "Enviar aviso (otros)"
 
-Los textos que recibe el agente son los mismos de n8n, para que Sofía responda igual.
+Los textos que recibe el agente tienen el mismo formato que en n8n (paridad probada en tests/test_multimedia.py).
+La instrucción de lectura de fotos ya NO es la de n8n: ver INSTRUCCION_IMAGEN.
 Diferencia con n8n: si algo falla (Meta, OpenAI, PDF dañado) el turno sigue con el texto de respaldo en vez
 de cortarse sin responder.
 """
@@ -26,13 +27,15 @@ TIPOS = {"audio", "image", "document"}
 AVISO_OTROS = ("Por ahora puedo leer texto, notas de voz, fotos y PDF 🙌. Ese tipo de mensaje no lo puedo procesar; "
                "cuéntame por texto o mándame una foto y te ayudo.")
 
-# Igual al nodo "GPT-4o Vision". Ojo: está escrita para la panadería (empresa 1), tal como en n8n.
+# Instrucción neutral, válida para cualquier empresa. La de n8n nombraba los productos de la panadería y el modelo
+# respondía "no es un producto de panadería o pastelería": esas palabras activaban la detección de interés
+# (conversations/deteccion.py) con categorías falsas. Aquí solo se describe lo que se ve, sin opinar.
 INSTRUCCION_IMAGEN = (
-    "Eres el lector de imágenes de una panadería/pastelería mayorista chilena (empanadas, pasteles, pan, "
-    "sopaipillas, insumos). Describe en español y de forma útil qué muestra esta imagen para atender al cliente. "
-    "Si es un PRODUCTO de panadería, di qué producto parece (sabor/tipo de empanada, pastel, pan, etc.) para poder "
-    "buscarlo en el catálogo. Si es un DOCUMENTO (lista de pedido, comprobante, factura, cotización), transcribe su "
-    "texto y los ítems/cantidades. Sé conciso."
+    "Describe en español, de forma breve y objetiva, lo que muestra esta imagen que un cliente envió por WhatsApp a "
+    "un negocio. Si es un producto, di qué producto es, con sus características visibles (tipo, sabor, tamaño, marca, "
+    "cantidad). Si es un documento (lista de pedido, comprobante, factura, cotización), transcribe su texto con los "
+    "ítems y cantidades. Describe solo lo que se ve: no opines si se relaciona con el negocio ni menciones rubros o "
+    "productos que no aparezcan en la imagen."
 )
 
 

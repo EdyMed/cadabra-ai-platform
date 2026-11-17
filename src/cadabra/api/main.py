@@ -1,4 +1,5 @@
 """API HTTP: gateway de webhooks (data plane) y, más adelante, la API /v1 del control plane."""
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -32,15 +33,26 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz", tags=["operación"])
     async def healthz() -> dict[str, object]:
-        """Lo revisa el health check de n8n cada 15 min. worker = hay un worker vivo (latido en Redis)."""
+        """Lo revisa el health check de n8n cada 15 min.
+
+        worker = hay un worker vivo (latido en Redis). modo_ensayo = el del WORKER (es quien responde); si no hay
+        worker vivo, se informa el de la API.
+        """
+        ajustes = get_settings()
+        latido = None
         try:
             redis_ok = bool(await app.state.redis.ping())
-            worker_ok = bool(await app.state.redis.exists("plat:worker:latido"))
+            latido = await app.state.redis.get("plat:worker:latido")
         except (RedisError, OSError):
-            redis_ok = worker_ok = False
-        ajustes = get_settings()
+            redis_ok = False
+        try:
+            modo_worker = json.loads(latido)["modo_ensayo"] if latido else None
+        except (ValueError, KeyError, TypeError):
+            modo_worker = None   # latido de una versión anterior ("1")
+        worker_ok = latido is not None
         return {"estado": "ok" if redis_ok and worker_ok else "degradado", "redis": redis_ok, "worker": worker_ok,
-                "modo_ensayo": ajustes.modo_ensayo, "puerta_entrada": ajustes.puerta_entrada}
+                "modo_ensayo": ajustes.modo_ensayo if modo_worker is None else modo_worker,
+                "puerta_entrada": ajustes.puerta_entrada}
 
     return app
 

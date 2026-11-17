@@ -79,3 +79,9 @@ async def test_pdf_sin_texto_y_archivo_no_pdf():
         texto = await multimedia.a_texto(multimedia.Medio("document", filename="x.pdf"), archivo,
                                          _ClienteQueFalla(), "w", "v")
         assert "no pude extraer texto" in texto
+
+
+def test_instruccion_de_fotos_no_nombra_rubros():
+    """Si la instrucción nombra productos, el modelo los repite y la detección de interés los toma como del cliente."""
+    import re
+    assert not re.search(r"panader|pastel|empanada|pan\b|sopaipilla", multimedia.INSTRUCCION_IMAGEN, re.I)

@@ -6,6 +6,7 @@ Dos tareas, una por paso (ver docs/motor-agente.md):
 """
 import asyncio
 import contextlib
+import json
 import logging
 from functools import lru_cache
 from typing import Any
@@ -27,14 +28,16 @@ from cadabra.workers.broker import broker
 log = logging.getLogger(__name__)
 
 
-# Latido: el worker renueva esta clave cada 30 s; /healthz la lee para saber si hay un worker vivo.
+# Latido: el worker renueva esta clave cada 30 s con su propio modo; /healthz la lee para saber si hay un worker
+# vivo y si está en ensayo (el que responde es el worker: su modo es el que importa, no el de la API).
 LATIDO = "plat:worker:latido"
 
 
 async def _latir() -> None:
+    estado = json.dumps({"modo_ensayo": get_settings().modo_ensayo})
     while True:
         try:
-            await _redis().set(LATIDO, "1", ex=120)
+            await _redis().set(LATIDO, estado, ex=120)
         except Exception:  # el latido nunca debe botar al worker
             log.exception("no se pudo registrar el latido del worker")
         await asyncio.sleep(30)

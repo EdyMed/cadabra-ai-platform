@@ -93,5 +93,6 @@ Con `CADABRA_PUERTA_ENTRADA=true` el webhook de Meta apunta a la plataforma y `m
   que no se van a responder.
 - Si Meta, OpenAI o el PDF fallan, el agente recibe el texto de respaldo y responde; n8n cortaba sin responder.
 - Un documento que no es PDF (Word, Excel) recibe el texto "no pude extraer texto"; en n8n daba error.
-- La instrucción de lectura de fotos está escrita para la panadería (empresa 1), igual que en n8n. Pendiente:
-  armarla con la descripción del negocio de cada empresa.
+- La instrucción de lectura de fotos es neutral (sirve para cualquier empresa). La de n8n nombraba los productos de
+  la panadería y el modelo los repetía ("no es un producto de panadería o pastelería"), lo que hacía que la
+  detección de interés registrara categorías falsas (p. ej. "Pasteles" en un "Hola").
