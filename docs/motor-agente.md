@@ -4,7 +4,8 @@ Cómo viaja un mensaje de WhatsApp por la plataforma. Cada paso es **un archivo*
 del paso dice dónde mirar.
 
 ```
- Meta ──POST──► messaging/gateway.py         firma, duplicados, encola        (API, responde en < 1 s)
+ Meta ──POST──► messaging/gateway.py         firma, motor de la línea, duplicados, encola (API, < 1 s)
+                       │   └─ línea en n8n (puerta de entrada) → messaging/ruteo.py reenvía a n8n tal cual
                        │
                        ▼  cola Redis "plat:cola:eventos"
                workers/tareas.py
@@ -69,6 +70,22 @@ del paso dice dónde mirar.
 "Detectar interés", "Detectar agenda", guardados en `scripts/n8n/`) y exige resultados idénticos en Python.
 `scripts/comparar_con_n8n.py` compara respuestas reales de ambos motores; `scripts/verificar_sql.py` prepara
 todas las consultas contra la base antes de desplegar.
+
+## Puerta de entrada y cambio de motor (Etapa 6)
+
+Con `CADABRA_PUERTA_ENTRADA=true` el webhook de Meta apunta a la plataforma y `messaging/ruteo.py` decide por línea:
+
+| `platform.lineas.motor` | Qué pasa |
+| --- | --- |
+| `codigo` | La atiende la plataforma (con `CADABRA_MODO_ENSAYO=false` responde de verdad) |
+| `n8n` o línea no registrada | Se reenvía a `n8n/webhook/whatsapp-agent` con el mismo cuerpo y la misma firma |
+
+- Pasar una línea: `update platform.lineas set motor = 'codigo' where phone_number_id = '…'` (aplica en ≤ 30 s).
+- Volver una línea a n8n: el mismo update con `'n8n'`.
+- Volver TODO a n8n: en Meta → la app → WhatsApp → Configuración, devolver la URL del webhook a n8n.
+- Si n8n no responde al reenvío, la plataforma contesta 502 y Meta reintenta.
+- `/healthz` informa `redis`, `worker` (latido en Redis cada 30 s), `modo_ensayo` y `puerta_entrada`; lo revisa el
+  health check de n8n cada 15 min.
 
 ## Multimedia: diferencias con n8n
 

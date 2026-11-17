@@ -12,13 +12,14 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from cadabra.agents import contexto
 from cadabra.conversations import entrada, puntaje, turno
 from cadabra.core.config import get_settings
+from cadabra.messaging import ruteo
 from cadabra.tools import catalogo, crm, gestion
 
 CONSULTAS = {
     "stock_producto": catalogo.SQL, "ventas_periodo": gestion.SQL_VENTAS, "top_productos": gestion.SQL_TOP,
     "saldo_cliente": gestion.SQL_SALDO, "crm_buscar": crm.SQL_BUSCAR, "contexto_empresa": contexto.SQL_EMPRESA,
     "contexto_rol": contexto.SQL_ROL_Y_LEAD, "contexto_historial": contexto.SQL_HISTORIAL,
-    "resolver_linea": entrada.SQL_LINEA, "control_entrada": entrada.SQL_CONTROL,
+    "resolver_linea": entrada.SQL_LINEA, "ruteo_motor": ruteo.SQL_MOTOR, "control_entrada": entrada.SQL_CONTROL,
     "guardar_puntaje": puntaje.SQL_GUARDAR,
     "guardar_turno": turno.SQL_GUARDAR_TURNO, "registrar_ejecucion": turno.SQL_EJECUCION,
     "registrar_evento": turno.SQL_EVENTO,

@@ -4,6 +4,8 @@ Dos tareas, una por paso (ver docs/motor-agente.md):
   whatsapp.procesar_evento  → conversations/entrada.py  (evento de Meta → buzón; audio/foto/PDF → texto)
   whatsapp.procesar_turno   → conversations/turno.py    (buzón → agente → respuesta → post_turno)
 """
+import asyncio
+import contextlib
 import logging
 from functools import lru_cache
 from typing import Any
@@ -25,11 +27,34 @@ from cadabra.workers.broker import broker
 log = logging.getLogger(__name__)
 
 
+# Latido: el worker renueva esta clave cada 30 s; /healthz la lee para saber si hay un worker vivo.
+LATIDO = "plat:worker:latido"
+
+
+async def _latir() -> None:
+    while True:
+        try:
+            await _redis().set(LATIDO, "1", ex=120)
+        except Exception:  # el latido nunca debe botar al worker
+            log.exception("no se pudo registrar el latido del worker")
+        await asyncio.sleep(30)
+
+
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
-async def al_iniciar(_: TaskiqState) -> None:
+async def al_iniciar(state: TaskiqState) -> None:
     settings = get_settings()
     configurar_logs(settings.log_level)
+    state.latido = asyncio.create_task(_latir())
     log.info("worker iniciado", extra={"datos": {"modo_ensayo": settings.modo_ensayo, "modelo": settings.modelo}})
+
+
+@broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
+async def al_detener(state: TaskiqState) -> None:
+    tarea = getattr(state, "latido", None)
+    if tarea:
+        tarea.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await tarea
 
 
 @lru_cache

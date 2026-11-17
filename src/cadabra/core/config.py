@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     meta_verify_token: SecretStr = SecretStr("")
     meta_token: SecretStr = SecretStr("")          # token del usuario del sistema de Cadabra (envío)
     meta_graph_version: str = "v21.0"
+    # Puerta de entrada: true SOLO cuando el webhook de Meta apunta a la plataforma. Entonces las líneas con
+    # motor='n8n' (o sin línea) se reenvían a n8n tal cual, y las con motor='codigo' las atiende la plataforma.
+    puerta_entrada: bool = False
     # Ventana para descartar reintentos de Meta del mismo message_id.
     dedupe_ttl_segundos: int = 172_800
 

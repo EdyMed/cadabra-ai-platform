@@ -32,11 +32,15 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz", tags=["operación"])
     async def healthz() -> dict[str, object]:
+        """Lo revisa el health check de n8n cada 15 min. worker = hay un worker vivo (latido en Redis)."""
         try:
             redis_ok = bool(await app.state.redis.ping())
+            worker_ok = bool(await app.state.redis.exists("plat:worker:latido"))
         except (RedisError, OSError):
-            redis_ok = False
-        return {"estado": "ok" if redis_ok else "degradado", "redis": redis_ok}
+            redis_ok = worker_ok = False
+        ajustes = get_settings()
+        return {"estado": "ok" if redis_ok and worker_ok else "degradado", "redis": redis_ok, "worker": worker_ok,
+                "modo_ensayo": ajustes.modo_ensayo, "puerta_entrada": ajustes.puerta_entrada}
 
     return app
 
