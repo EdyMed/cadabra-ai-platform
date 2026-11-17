@@ -14,8 +14,10 @@ del paso dice dónde mirar.
                                                2. ¿qué empresa y motor? resolver_linea (db)
                                                3. ¿bot encendido en esta conversación? (bot_activo / pausa)
                                                4. ¿pasó el tope diario?               (conversations/tope.py)
-                                               5. deja el texto en el buzón           (conversations/buzon.py)
-                                               6. agenda procesar_turno
+                                               5. audio/foto/PDF → texto              (conversations/multimedia.py)
+                                                  otro tipo (sticker, video…) → aviso fijo
+                                               6. deja el texto en el buzón           (conversations/buzon.py)
+                                               7. agenda procesar_turno
                        │
                        ▼  (espera 8 s: agrupa mensajes seguidos)
                  procesar_turno ─────────► conversations/turno.py
@@ -44,6 +46,7 @@ del paso dice dónde mirar.
 | `agents/agente.py` | El grafo LangGraph: modelo + herramientas | "AI Agent" + "OpenAI" |
 | `tools/` | Una herramienta por archivo, con argumentos tipados | Nodos de herramientas |
 | `conversations/deteccion.py` | Reglas de interés, pedido de humano, nombre y agenda | "Detectar interés / agenda (auto)" |
+| `conversations/multimedia.py` + `messaging/media.py` | Descarga el archivo de Meta; Whisper, GPT-4o y PDF → texto | "2 · PROCESAMIENTO MULTIMEDIA" |
 | `conversations/puntaje.py` | Clasificador de IA + pesos del puntaje del lead | "Score: …" |
 | `integrations/n8n.py` | Webhooks de n8n: alerta al vendedor, contador, Calendar, coexistencia | Workflows auxiliares |
 
@@ -67,6 +70,11 @@ del paso dice dónde mirar.
 `scripts/comparar_con_n8n.py` compara respuestas reales de ambos motores; `scripts/verificar_sql.py` prepara
 todas las consultas contra la base antes de desplegar.
 
-## Pendiente
+## Multimedia: diferencias con n8n
 
-Multimedia (audio, imagen, PDF): mientras tanto esos mensajes los atiende n8n.
+- Se convierte **después** de la guarda y el tope (n8n transcribía antes): no se paga Whisper/visión por mensajes
+  que no se van a responder.
+- Si Meta, OpenAI o el PDF fallan, el agente recibe el texto de respaldo y responde; n8n cortaba sin responder.
+- Un documento que no es PDF (Word, Excel) recibe el texto "no pude extraer texto"; en n8n daba error.
+- La instrucción de lectura de fotos está escrita para la panadería (empresa 1), igual que en n8n. Pendiente:
+  armarla con la descripción del negocio de cada empresa.

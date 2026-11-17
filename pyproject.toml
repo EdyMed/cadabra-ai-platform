@@ -18,6 +18,7 @@ dependencies = [
   "langgraph>=0.2",
   "langchain-openai>=0.2",
   "tzdata>=2024.1",            # zonas horarias (America/Santiago) en Windows e imágenes slim
+  "pypdf>=5.1",                # texto de los PDF que mandan los clientes
 ]
 
 [project.optional-dependencies]

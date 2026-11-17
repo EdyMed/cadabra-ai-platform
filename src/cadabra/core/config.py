@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     max_iteraciones: int = 6                       # pasos del agente por turno (n8n: maxIterations = 6)
     zona_horaria: str = "America/Santiago"
     modelo_puntaje: str = "gpt-4o-mini"            # clasificador del puntaje del lead (igual que n8n)
+    modelo_audio: str = "whisper-1"                # notas de voz (igual que n8n)
+    modelo_vision: str = "gpt-4o"                  # lectura de fotos (igual que n8n)
 
     # n8n: integraciones que siguen allá (Calendar, alerta al vendedor, contador, coexistencia)
     n8n_url: str = "https://appcadabra-cadabra-project.jmyxxj.easypanel.host"
