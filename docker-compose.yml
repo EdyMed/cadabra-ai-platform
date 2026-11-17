@@ -1,0 +1,16 @@
+# Desarrollo local. En el VPS cada servicio es una app de EasyPanel con la misma imagen
+# y se usa el Redis existente (ver docs/despliegue.md).
+services:
+  api:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    env_file: .env
+    ports: ["8000:8000"]
+    depends_on: [redis]
+  worker:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    env_file: .env
+    command: ["taskiq", "worker", "cadabra.workers.broker:broker", "cadabra.workers.tareas"]
+    depends_on: [redis]
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
