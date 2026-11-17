@@ -58,9 +58,10 @@ async def respuesta_plataforma(conexion, desde: dt.datetime) -> tuple[str, list[
             eventos = (await conexion.execute(text(
                 "select tipo, nombre, salida from platform.execution_events where execution_id = :i order by id"
             ), {"i": fila.id})).all()
-            herramientas = [e.nombre for e in eventos if e.tipo == "herramienta"]
+            herramientas = [e.nombre for e in eventos if e.tipo == "herramienta" and e.nombre != "post_turno"]
             final = next((e.salida.get("respuesta", "") for e in eventos if e.tipo == "llm"), "")
-            return final, herramientas, fila.latencia_ms
+            post = next((e.salida for e in eventos if e.nombre == "post_turno"), None)
+            return final, herramientas, fila.latencia_ms, post
         await conexion.rollback()
         await asyncio.sleep(2)
     return None
@@ -78,7 +79,10 @@ def respuesta_n8n(clave: str, desde: dt.datetime) -> tuple[str, list[str]] | Non
                 herramientas = [n for n in run if n in {
                     "stock_producto", "ventas_periodo", "top_productos", "saldo_cliente", "mostrar_menu",
                     "crm_guardar_lead", "crm_actualizar_estado"}]
-                return salida, herramientas
+                post = {n: run[n][0]["data"]["main"][0][0]["json"] for n in run
+                        if (n.startswith("Detectar") or n == "Score: calcular")
+                        and run[n][0].get("data", {}).get("main", [[None]])[0]}
+                return salida, herramientas, post
         time.sleep(3)
     return None
 
@@ -100,6 +104,10 @@ async def main() -> None:
             print("  " + (p[0] if p else "SIN RESPUESTA"))
             print(f"N8N {('(herramientas: ' + ', '.join(n[1]) + ')') if n else ''}:")
             print("  " + (n[0] if n else "SIN RESPUESTA"))
+            if p:
+                print("POST PLATAFORMA: " + json.dumps(p[3], ensure_ascii=False, default=str)[:900])
+            if n:
+                print("POST N8N: " + json.dumps(n[2], ensure_ascii=False, default=str)[:900])
     await engine.dispose()
 
 
