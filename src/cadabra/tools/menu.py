@@ -13,7 +13,8 @@ class TipoMenu(BaseModel):
 async def ejecutar(entorno: EntornoHerramienta, args: TipoMenu) -> dict:
     ctx = entorno.ctx
     menu = ctx.perfil.menu
-    es_owner = args.tipo_menu == "owner"
+    # El menú del dueño solo para el dueño, aunque el modelo pida otro (en pruebas lo pidió para un anon).
+    es_owner = args.tipo_menu == "owner" and ctx.rol == "owner"
     await entorno.whatsapp.enviar_botones(
         phone_number_id=ctx.phone_number_id,
         para=ctx.telefono,

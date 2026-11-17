@@ -81,3 +81,15 @@ async def test_anon_no_recibe_herramientas_de_gestion():
 def test_texto_a_enviar():
     assert texto_a_enviar(" 👇 ") == ""
     assert texto_a_enviar("Hola") == "Hola"
+
+
+async def test_anon_nunca_recibe_el_menu_del_dueno_aunque_el_modelo_lo_pida():
+    ctx = contexto("anon")
+    wa = ClienteWhatsApp("t", ensayo=True)
+    modelo = ModeloConGuion(guion=[
+        AIMessage("", tool_calls=[{"name": "mostrar_menu", "args": {"tipo_menu": "owner"}, "id": "t1"}]),
+        AIMessage("👇"),
+    ])
+    await responder(ctx, entorno(ctx, wa), Settings(), modelo=modelo)
+    botones = [b["reply"]["id"] for b in wa.enviados[0]["interactive"]["action"]["buttons"]]
+    assert "ventas_periodo" not in botones
