@@ -114,4 +114,6 @@ def test_valida_el_phone_number_id(entorno):
 
 def test_clave_con_caracteres_no_ascii_da_401(entorno):
     c, _, _ = entorno()
-    assert _post(c, clave="clave-ádmin\u00a0").status_code == 401
+    # PowerShell puede mandar el encabezado con bytes latin-1; Starlette lo decodifica a un str no ASCII
+    r = c.post("/v1/lineas", json=ALTA, headers={"X-Cadabra-Admin": "clave-\u00e1dmin".encode("latin-1")})
+    assert r.status_code == 401
