@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from cadabra.administration import lineas
 from cadabra.agents import contexto
 from cadabra.conversations import entrada, puntaje, turno
 from cadabra.core.config import get_settings
@@ -21,6 +22,8 @@ CONSULTAS = {
     "contexto_rol": contexto.SQL_ROL_Y_LEAD, "contexto_historial": contexto.SQL_HISTORIAL,
     "resolver_linea": entrada.SQL_LINEA, "ruteo_motor": ruteo.SQL_MOTOR, "control_entrada": entrada.SQL_CONTROL,
     "guardar_puntaje": puntaje.SQL_GUARDAR,
+    "alta_tenant": lineas.SQL_TENANT, "alta_linea": lineas.SQL_LINEA, "alta_otras_n8n": lineas.SQL_OTRAS_A_N8N,
+    "alta_motor": lineas.SQL_MOTOR,
     "guardar_turno": turno.SQL_GUARDAR_TURNO, "registrar_ejecucion": turno.SQL_EJECUCION,
     "registrar_evento": turno.SQL_EVENTO,
     # guardar_en_crm arma su SQL según los campos: se verifica con todas las columnas permitidas.

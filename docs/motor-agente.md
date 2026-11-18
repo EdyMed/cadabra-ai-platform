@@ -96,3 +96,22 @@ Con `CADABRA_PUERTA_ENTRADA=true` el webhook de Meta apunta a la plataforma y `m
 - La instrucción de lectura de fotos es neutral (sirve para cualquier empresa). La de n8n nombraba los productos de
   la panadería y el modelo los repetía ("no es un producto de panadería o pastelería"), lo que hacía que la
   detección de interés registrara categorías falsas (p. ej. "Pasteles" en un "Hola").
+
+## Alta automática de líneas (Embedded Signup)
+
+Cuando un cliente conecta su WhatsApp desde el panel (Configuración → Conectar WhatsApp), el panel llama a
+`POST /v1/lineas` (`administration/lineas.py`, encabezado `X-Cadabra-Admin` = `CADABRA_ADMIN_CLAVE`):
+
+1. Registra la empresa en `platform.tenants` y la línea en `platform.lineas` con `CADABRA_MOTOR_LINEAS_NUEVAS`
+   (por defecto `codigo`). Las otras líneas de la empresa vuelven a `n8n` (una empresa = una línea activa).
+2. Con motor `codigo`, le pone a la línea su webhook propio en Meta → `CADABRA_URL_PUBLICA/webhooks/whatsapp`.
+3. Si el worker no está vivo, está en modo ensayo o Meta rechaza el webhook (p. ej. el usuario del sistema de
+   Cadabra no quedó asignado a la WABA del cliente), la línea queda en `n8n` y el panel muestra el motivo.
+
+Coexistencia funciona igual: los ecos del dueño, el historial y los contactos llegan a la plataforma y
+`conversations/entrada.py` los reenvía al workflow de coexistencia de n8n, que pausa el bot cuando el dueño
+contesta desde su celular (`public.bot_pausas`, que la plataforma respeta).
+
+El envío usa `CADABRA_META_TOKEN` (usuario del sistema de Cadabra): sirve para la línea del cliente solo si el
+panel logró asignarlo a su WABA (`agente_whatsapp_cuentas.system_user_asignado`). Si no, Meta rechaza el
+webhook en el paso 2 y la línea queda en n8n.

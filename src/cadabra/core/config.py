@@ -1,5 +1,6 @@
 """Configuración por variables de entorno (prefijo CADABRA_). Ningún secreto vive en el código."""
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,6 +22,10 @@ class Settings(BaseSettings):
     # Puerta de entrada: true SOLO cuando el webhook de Meta apunta a la plataforma. Entonces las líneas con
     # motor='n8n' (o sin línea) se reenvían a n8n tal cual, y las con motor='codigo' las atiende la plataforma.
     puerta_entrada: bool = False
+    # Alta de líneas (POST /v1/lineas, lo llama el panel tras el Embedded Signup). Sin clave, el endpoint no opera.
+    admin_clave: SecretStr = SecretStr("")         # encabezado X-Cadabra-Admin
+    url_publica: str = "https://plataforma.appcadabra.cl"   # a dónde apunta el webhook propio de cada línea
+    motor_lineas_nuevas: Literal["codigo", "n8n"] = "codigo"
     # Ventana para descartar reintentos de Meta del mismo message_id.
     dedupe_ttl_segundos: int = 172_800
 
