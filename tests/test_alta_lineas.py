@@ -110,3 +110,8 @@ def test_motor_n8n_quita_el_webhook_propio(entorno):
 def test_valida_el_phone_number_id(entorno):
     c, _, _ = entorno()
     assert _post(c, {**ALTA, "phone_number_id": "abc"}).status_code == 422
+
+
+def test_clave_con_caracteres_no_ascii_da_401(entorno):
+    c, _, _ = entorno()
+    assert _post(c, clave="clave-ádmin\u00a0").status_code == 401

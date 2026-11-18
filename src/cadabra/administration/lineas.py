@@ -134,7 +134,7 @@ def autorizar(settings: Annotated[Settings, Depends(get_settings)],
     esperada = settings.admin_clave.get_secret_value()
     if not esperada:
         raise HTTPException(503, "Alta de líneas deshabilitada: falta CADABRA_ADMIN_CLAVE")
-    if not hmac.compare_digest(clave, esperada):
+    if not hmac.compare_digest(clave.encode(), esperada.encode()):   # bytes: un str no ASCII lanzaría TypeError
         raise HTTPException(401)
 
 
