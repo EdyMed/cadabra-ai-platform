@@ -43,6 +43,7 @@ Mientras convivan n8n y la plataforma, un cambio de texto se hace en LOS DOS lad
 from dataclasses import asdict
 
 from cadabra.agents.contexto import ContextoTurno
+from cadabra.agents.etapas import texto_prompt
 from cadabra.agents.perfil import ficha_cliente
 
 PLANTILLA = """'''
@@ -66,7 +67,7 @@ def armar_prompt(ctx: ContextoTurno, fecha_hora: str, dia_semana: str) -> str:
         historial=ctx.historial_texto(),
         ficha_cliente=ficha_cliente(ctx.lead),
         **perfil,
-    )
+    ) + texto_prompt(ctx.config)   # etapas propias del cliente (agents/etapas.py); "" si no tiene
 '''
 with open(destino, "w", encoding="utf-8", newline="\n") as f:
     f.write(cabecera + t + pie)

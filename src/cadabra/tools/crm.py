@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cadabra.agents.etapas import FIJAS, REACTIVABLES, estado_valido
 from cadabra.tools.base import EntornoHerramienta, Herramienta
 
-ESTADOS = ("Nuevo Lead, En Conversación, Cotización Enviada, Primer Pedido, Cliente Activo, Cliente Recurrente, "
-           "Sin Respuesta, Requiere Vendedor, Inactivo")
+ESTADOS = ", ".join(FIJAS)   # + las etapas propias de la empresa, que el modelo ve en el prompt (agents/etapas.py)
 
 
 class DatosLead(BaseModel):
@@ -46,10 +46,17 @@ COLUMNAS = ("nombre", "nombre_negocio", "producto_interes", "estado_crm", "comun
             "vendedor_asignado", "condicion_pago", "estado_agendamiento", "bot_activo")
 
 
-async def guardar_en_crm(sesion: AsyncSession, empresa: int, telefono: str, campos: dict[str, Any]) -> dict[str, Any]:
+# "Estado suave": el estado por defecto (En Conversación) solo se aplica si el lead no había avanzado.
+SQL_ESTADO_SUAVE = "estado_crm = case when coalesce(estado_crm, '') = any(:reactivables) then :estado_crm else estado_crm end"
+
+
+async def guardar_en_crm(sesion: AsyncSession, empresa: int, telefono: str, campos: dict[str, Any],
+                         estado_suave: bool = False) -> dict[str, Any]:
     """Actualiza el lead del contacto o lo crea si no existe. Solo escribe columnas permitidas y con valor.
 
     Lo usan las herramientas del agente y la detección automática de interés (conversations/post_turno.py).
+    `estado_suave`: el estado_crm que viene es el de por defecto, no una decisión; en un lead existente solo se
+    aplica si está en una etapa REACTIVABLE (no saca a un lead de Cotización Enviada o de una etapa propia).
     """
     contacto = int(re.sub(r"\D", "", telefono))
     campos = {k: v for k, v in campos.items() if k in COLUMNAS and v is not None and v != ""}
@@ -57,10 +64,12 @@ async def guardar_en_crm(sesion: AsyncSession, empresa: int, telefono: str, camp
 
     if existente is not None:
         if campos:
-            asignaciones = ", ".join(f"{k} = :{k}" for k in campos)
+            asignaciones = ", ".join(SQL_ESTADO_SUAVE if k == "estado_crm" and estado_suave else f"{k} = :{k}"
+                                     for k in campos)
+            extra = {"reactivables": list(REACTIVABLES)} if estado_suave and "estado_crm" in campos else {}
             await sesion.execute(
                 text(f"update crm.crm_leads set {asignaciones} where id = :id and empresa = :empresa"),
-                {**campos, "id": existente, "empresa": empresa},
+                {**campos, **extra, "id": existente, "empresa": empresa},
             )
         return {"record_id": existente, "accion": "actualizado"}
 
@@ -72,15 +81,28 @@ async def guardar_en_crm(sesion: AsyncSession, empresa: int, telefono: str, camp
     return {"record_id": creado.scalar_one(), "accion": "creado"}
 
 
-async def upsert_lead(entorno: EntornoHerramienta, campos: dict[str, Any]) -> dict[str, Any]:
-    """El lead de ESTA conversación y ESTA empresa: el modelo no puede elegir otro."""
-    return await guardar_en_crm(entorno.sesion, entorno.ctx.empresa, entorno.ctx.telefono, campos)
+async def upsert_lead(entorno: EntornoHerramienta, campos: dict[str, Any], estado_suave: bool = False) -> dict[str, Any]:
+    """El lead de ESTA conversación y ESTA empresa: el modelo no puede elegir otro.
+
+    El estado_crm debe ser una etapa fija o una propia habilitada de la empresa; si no, se descarta y se avisa
+    al modelo (el resto de los datos sí se guarda).
+    """
+    aviso = None
+    estado = campos.get("estado_crm")
+    if estado and not estado_valido(entorno.ctx.config, estado):
+        campos = {**campos, "estado_crm": None}
+        aviso = (f"La etapa '{estado}' no existe en este negocio: no se cambió la etapa. Usa una de: {ESTADOS} "
+                 "o una de las etapas propias indicadas en tus instrucciones.")
+    resultado = await guardar_en_crm(entorno.sesion, entorno.ctx.empresa, entorno.ctx.telefono, campos, estado_suave)
+    return {**resultado, "aviso": aviso} if aviso else resultado
 
 
 async def guardar_lead(entorno: EntornoHerramienta, args: DatosLead) -> dict[str, Any]:
     campos = args.model_dump()
-    campos["estado_crm"] = campos["estado_crm"] or "En Conversación"
-    return await upsert_lead(entorno, campos)
+    if campos["estado_crm"]:
+        return await upsert_lead(entorno, campos)
+    # Sin etapa elegida por el modelo: "En Conversación" solo si el lead no había avanzado.
+    return await upsert_lead(entorno, {**campos, "estado_crm": "En Conversación"}, estado_suave=True)
 
 
 async def actualizar_estado(entorno: EntornoHerramienta, args: CambioEstado) -> dict[str, Any]:
@@ -104,7 +126,8 @@ CRM_GUARDAR_LEAD = Herramienta(
 CRM_ACTUALIZAR_ESTADO = Herramienta(
     nombre="crm_actualizar_estado",
     descripcion=(
-        "Actualiza datos del lead de esta conversación: nombre, nombre_negocio, estado_crm (valor exacto), "
+        "Actualiza datos del lead de esta conversación: nombre, nombre_negocio, estado_crm (valor exacto: una "
+        f"etapa estándar ({ESTADOS}) o una etapa propia del negocio indicada en tus instrucciones), "
         "vendedor_asignado, condicion_pago, estado_agendamiento y bot_activo (false SOLO para pasar a un vendedor)."
     ),
     argumentos=CambioEstado,

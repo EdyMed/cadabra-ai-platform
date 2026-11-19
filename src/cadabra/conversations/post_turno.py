@@ -60,7 +60,10 @@ async def en_la_base(sesion: AsyncSession, ctx: ContextoTurno, respuesta: str, s
 
     if not settings.modo_ensayo:
         if interes["debeRegistrar"]:
-            await guardar_en_crm(sesion, ctx.empresa, ctx.telefono, interes)
+            # "En Conversación" es el estado por defecto de la detección: no retrocede a un lead que ya avanzó
+            # (Cotización Enviada, Primer Pedido, una etapa propia…). "Requiere Vendedor" sí se aplica siempre.
+            await guardar_en_crm(sesion, ctx.empresa, ctx.telefono, interes,
+                                 estado_suave=interes.get("estado_crm") == "En Conversación")
         if p is not None:
             await puntaje.guardar(sesion, ctx, p, settings.modelo_puntaje)
     return PostTurno(interes, agenda, p, aviso)

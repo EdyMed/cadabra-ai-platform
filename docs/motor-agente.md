@@ -115,3 +115,22 @@ contesta desde su celular (`public.bot_pausas`, que la plataforma respeta).
 El envío usa `CADABRA_META_TOKEN` (usuario del sistema de Cadabra): sirve para la línea del cliente solo si el
 panel logró asignarlo a su WABA (`agente_whatsapp_cuentas.system_user_asignado`). Si no, Meta rechaza el
 webhook en el paso 2 y la línea queda en n8n.
+
+## Etapas propias del cliente (tablero de Oportunidades)
+
+Además de las 9 etapas fijas, cada cliente puede crear hasta 4 etapas propias en el panel (Oportunidades →
+«Etapas»). Se guardan en la ficha (`agente_empresas_config.config -> 'etapas'`) y `agents/etapas.py` las lee en
+cada turno:
+
+- El agente puede mover un lead a una etapa propia **solo si está visible y tiene criterio** (la instrucción del
+  cliente sobre cuándo hacerlo). Sin criterio, la etapa es de uso manual en el panel.
+- `armar_prompt` agrega el bloque "ETAPAS PROPIAS DEL NEGOCIO" con cada etapa y su criterio (una sola línea,
+  máximo 300 caracteres). Si la empresa no tiene etapas propias, el prompt queda igual al de n8n.
+- `crm_actualizar_estado` / `crm_guardar_lead` solo aceptan una etapa fija o una propia habilitada de **esa**
+  empresa; si no, descartan la etapa (guardan el resto) y le avisan al modelo.
+- Una etapa propia nunca corta el bot: para eso sigue siendo "Requiere Vendedor".
+
+**Estado suave:** "En Conversación" es el estado por defecto de la detección de interés y de `crm_guardar_lead`
+sin etapa. En un lead existente solo se aplica si está en `REACTIVABLES` (vacío, Nuevo Lead, Sin Respuesta,
+Inactivo): un lead en Cotización Enviada, Primer Pedido o una etapa propia ya no retrocede cuando vuelve a
+preguntar por un producto (en n8n sí retrocedía). "Requiere Vendedor" se aplica siempre.

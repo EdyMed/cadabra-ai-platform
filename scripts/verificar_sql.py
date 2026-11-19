@@ -31,6 +31,7 @@ CONSULTAS = {
                          + ", ".join(f":{c}" for c in crm.COLUMNAS) + ", :empresa, :contact_id, :phone) returning id"),
     "crm_actualizar": text("update crm.crm_leads set " + ", ".join(f"{c} = :{c}" for c in crm.COLUMNAS)
                            + " where id = :id and empresa = :empresa"),
+    "crm_estado_suave": text("update crm.crm_leads set " + crm.SQL_ESTADO_SUAVE + " where id = :id and empresa = :empresa"),
 }
 
 
